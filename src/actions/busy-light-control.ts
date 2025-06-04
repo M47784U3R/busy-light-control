@@ -4,7 +4,7 @@ import { action, KeyDownEvent, SingletonAction, WillAppearEvent } from "@elgato/
  * An example action class that displays a count that increments by one each time the button is pressed.
  */
 @action({ UUID: "dev.ministryofcode.busy-light-control.increment" })
-export class IncrementCounter extends SingletonAction<CounterSettings> {
+export class BusyLightCrontrol extends SingletonAction<CounterSettings> {
 	/**
 	 * The {@link SingletonAction.onWillAppear} event is useful for setting the visual representation of an action when it becomes visible. This could be due to the Stream Deck first
 	 * starting up, or the user navigating between pages / folders etc.. There is also an inverse of this event in the form of {@link streamDeck.client.onWillDisappear}. In this example,
@@ -29,6 +29,7 @@ export class IncrementCounter extends SingletonAction<CounterSettings> {
 		// Update the current count in the action's settings, and change the title.
 		await ev.action.setSettings(settings);
 		await ev.action.setTitle(`${settings.count}`);
+		await ev.action.setImage();
 	}
 }
 

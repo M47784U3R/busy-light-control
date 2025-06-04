@@ -4,11 +4,11 @@
 	"Author": "Matt Bauer",
 	"Actions": [
 		{
-			"Name": "Counter",
-			"UUID": "dev.ministryofcode.busy-light-control.increment",
+			"Name": "Busy Light Control",
+			"UUID": "dev.ministryofcode.busy-light-control",
 			"Icon": "imgs/actions/counter/icon",
-			"Tooltip": "Displays a count, which increments by one on press.",
-			"PropertyInspectorPath": "ui/increment-counter.html",
+			"Tooltip": "Displays the current status of the busy light.",
+			"PropertyInspectorPath": "ui/busy-light-control.html",
 			"Controllers": [
 				"Keypad"
 			],
