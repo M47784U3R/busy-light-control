@@ -4,6 +4,7 @@ import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 import path from "node:path";
 import url from "node:url";
+import json from '@rollup/plugin-json';
 
 const isWatching = !!process.env.ROLLUP_WATCH;
 const sdPlugin = "dev.ministryofcode.busy-light-control.sdPlugin";
@@ -35,6 +36,7 @@ const config = {
 			exportConditions: ["node"],
 			preferBuiltins: true
 		}),
+		json(),
 		commonjs(),
 		!isWatching && terser(),
 		{

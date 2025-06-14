@@ -1,5 +1,6 @@
 import { action, KeyDownEvent, SingletonAction, WillAppearEvent } from "@elgato/streamdeck";
-import { group } from "console";
+import * as PImage from 'pureimage';
+import { PassThrough } from 'stream';
 
 /**
  * Toggles the busy light when pressing the button. Long press switches the busy light off/on.
@@ -25,27 +26,31 @@ export class BusyLightCrontrol extends SingletonAction<BusyLightCrontrolSettings
 				&& settings.endpointOn
 				&& settings.endpointOff
 			) {						
-				const statusResponse = await fetch(settings.host + settings.endpointStatus, {
+					const statusResponse = await fetch(settings.host + settings.endpointStatus, {
 					method: 'GET',
 					headers: { 'Content-Type': 'application/json' }
 				});
 
-				const apiStatus = await statusResponse.json();
-				apiOn = apiStatus?.status === 'on';
+				const apiStatus: StatusResponse = await statusResponse.json() as StatusResponse;
+				apiOn = statusResponse.status === 200;
 
 				if (apiOn === true) {
-					const switchResponse = await fetch(settings.host + settings.endpointSwitch, {
+					var targetColor = new BusyLightColor({ red: 0, green: 255, blue: 0 })				
+					const secondResponse = await fetch(settings.host + settings.endpointSwitch, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ red: settings.colorAvailable.red, green: settings.colorAvailable.green, blue: settings.colorAvailable.blue })
+						body: JSON.stringify(targetColor)
 					});
-				} 
+		
+					const secondData = await secondResponse.json();
+					const base64Image = await createBase64Image(targetColor);
+					await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+				}
 			}
 		} catch (error) {
-        	console.error('Fehler bei den Requests:', error);
-    	}	
-
-		return ev.action.setTitle(`${ev.payload.settings.host ?? 'no host'}`);
+			console.error('Fehler bei den Requests:', error);
+		}
+	return ev.action.setTitle(`${ev.payload.settings.host ?? 'no host'}`);
 	}
 
 	/**
@@ -57,14 +62,10 @@ export class BusyLightCrontrol extends SingletonAction<BusyLightCrontrolSettings
 	override async onKeyDown(ev: KeyDownEvent<BusyLightCrontrolSettings>): Promise<void> {
 		// Update the count from the settings.
 		const { settings } = ev.payload;
-		console.log(settings);
-		console.log("button pressed");
 		handleButtonPress(settings, ev);
 
 		// Update the current count in the action's settings, and change the title.
 		await ev.action.setSettings(settings);
-		// await ev.action.setTitle(`${settings.host}`);
-		//await ev.action.setImage();
 	}
 }
 
@@ -77,26 +78,31 @@ async function handleButtonPress(settings: BusyLightCrontrolSettings, ev: KeyDow
 			&& settings.endpointOn
 			&& settings.endpointOff
 		) {						
-			console.log("call API " + settings.host + settings.endpointStatus);
 			const statusResponse = await fetch(settings.host + settings.endpointStatus, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });
 
-        const apiStatus = await statusResponse.json();
-		apiOn = apiStatus?.status === 'on';
+        const apiStatus: StatusResponse = await statusResponse.json() as StatusResponse;
+		apiOn = statusResponse.status === 200;
 
         if (apiOn === true) {
 			let color = new BusyLightColor({ red: apiStatus?.red, green: apiStatus?.green, blue: apiStatus?.blue })
-			await ev.action.setTitle(settings.colorBusy);
-			const secondResponse = await fetch('https://example.com/api/second', {
+			if (color.red === 255) {
+				var targetColor = new BusyLightColor({ red: 0, green: 255, blue: 0 })
+			} else {
+				var targetColor = new BusyLightColor({ red: 255, green: 0, blue: 0 })
+			}
+			const secondResponse = await fetch(settings.host + settings.endpointSwitch, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ value: 'test' })
+				body: JSON.stringify(targetColor)
 			});
-
+ 
 			const secondData = await secondResponse.json();
-			console.log('Zweiter Response:', secondData);
+			const base64Image = await createBase64Image(targetColor);
+			await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+
 			} else {
 				if (settings.host === undefined) {
 					return errorCodes.hostNotSet;
@@ -119,6 +125,30 @@ async function handleButtonPress(settings: BusyLightCrontrolSettings, ev: KeyDow
         console.error('Fehler bei den Requests:', error);
 		return errorCodes.unknownError;
     }	
+}
+
+async function createBase64Image(color: BusyLightColor, width = 100, height = 100): Promise<string> {
+  const img = PImage.make(width, height);
+  const ctx = img.getContext('2d');
+
+  ctx.fillStyle = `rgb(${color.red}, ${color.green}, ${color.blue})`;
+  ctx.fillRect(0, 0, width, height);
+
+  const stream = new PassThrough();
+  const chunks: Buffer[] = [];
+
+  stream.on('data', chunk => chunks.push(chunk));
+
+  return new Promise((resolve, reject) => {
+    stream.on('end', () => {
+      const buffer = Buffer.concat(chunks);
+      resolve(buffer.toString('base64'));
+    });
+
+    stream.on('error', reject);
+
+    PImage.encodePNGToStream(img, stream).catch(reject);
+  });
 }
 
 /**
@@ -163,3 +193,10 @@ const errorCodes = {
 	endpointOffNotSet: 600,
 	unknownError: 700,
 }
+
+type StatusResponse = {
+  status: 'on' | 'off';
+  red?: number;
+  green?: number;
+  blue?: number;
+};
