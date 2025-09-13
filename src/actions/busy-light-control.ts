@@ -24,7 +24,7 @@ export class BusyLightControl extends SingletonAction<BusyLightControlSettings> 
         await ev.action.setImage(`data:image/png;base64,${base64Image}`);
       }
     } catch (err) {
-      console.error("Fehler bei onWillAppear:", err);
+      console.error("Error in onWillAppear:", err);
     }
 
     await ev.action.setTitle(settings.host ?? 'no host');
@@ -51,7 +51,7 @@ async function handleButtonPress(settings: BusyLightControlSettings, ev: KeyDown
     const base64Image = await createBase64Image(targetColor);
     await ev.action.setImage(`data:image/png;base64,${base64Image}`);
   } catch (error) {
-    console.error('Fehler bei handleButtonPress:', error);
+    console.error('Error in handleButtonPress:', error);
   }
 }
 
@@ -64,7 +64,7 @@ async function fetchStatus(host: string, endpoint: string): Promise<StatusRespon
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.ok ? await res.json() : null;
+  return !res.ok ? null : await res.json() as StatusResponse;
 }
 
 async function switchColor(settings: BusyLightControlSettings, color: BusyLightColor): Promise<void> {
@@ -94,11 +94,6 @@ async function createBase64Image(color: BusyLightColor, width = 100, height = 10
   });
 }
 
-const COLORS = {
-  available: new BusyLightColor(0, 255, 0),
-  busy: new BusyLightColor(255, 0, 0),
-};
-
 class BusyLightColor {
   constructor(public red = 0, public green = 0, public blue = 0) {}
 }
@@ -124,4 +119,9 @@ type StatusResponse = {
   red?: number;
   green?: number;
   blue?: number;
+};
+
+const COLORS = {
+  available: new BusyLightColor(0, 255, 0),
+  busy: new BusyLightColor(255, 0, 0),
 };
