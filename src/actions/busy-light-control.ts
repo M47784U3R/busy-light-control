@@ -1,4 +1,4 @@
-import { action, KeyDownEvent, SingletonAction, WillAppearEvent } from "@elgato/streamdeck";
+import streamDeck, { action, KeyDownEvent, SingletonAction, WillAppearEvent } from "@elgato/streamdeck";
 import * as PImage from 'pureimage';
 import { PassThrough } from 'stream';
 
@@ -12,8 +12,11 @@ export class BusyLightControl extends SingletonAction<BusyLightControlSettings> 
 
     if (!areSettingsValid(settings)) {
       await ev.action.setTitle('Invalid settings');
+      streamDeck.logger.info('Invalid settings');
       return;
     }
+
+    await ev.action.setTitle(settings.host ?? 'no host');
 
     try {
       const status = await fetchStatus(settings.host!, settings.endpointStatus!);
@@ -22,24 +25,25 @@ export class BusyLightControl extends SingletonAction<BusyLightControlSettings> 
         await switchColor(settings, targetColor);
         const base64Image = await createBase64Image(targetColor);
         await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+        await ev.action.setTitle('Available');
       }
     } catch (err) {
+      streamDeck.logger.error('Error in onWillAppear: ' + JSON.stringify(err));
       console.error("Error in onWillAppear:", err);
     }
-
-    await ev.action.setTitle(settings.host ?? 'no host');
   }
 
   override async onKeyDown(ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
     const { settings } = ev.payload;
+    streamDeck.logger.debug('Button pressed');
     await handleButtonPress(settings, ev);
     await ev.action.setSettings(settings);
   }
 }
 
 async function handleButtonPress(settings: BusyLightControlSettings, ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
+  streamDeck.logger.debug('Validating settings');
   if (!areSettingsValid(settings)) return;
-
   try {
     const status = await fetchStatus(settings.host!, settings.endpointStatus!);
     if (!status) return;
@@ -50,7 +54,9 @@ async function handleButtonPress(settings: BusyLightControlSettings, ev: KeyDown
     await switchColor(settings, targetColor);
     const base64Image = await createBase64Image(targetColor);
     await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+    await ev.action.setTitle(isBusy ? 'Available' : 'Busy');
   } catch (error) {
+    streamDeck.logger.error('Error in handleButtonPress: ' + JSON.stringify(error));
     console.error('Error in handleButtonPress:', error);
   }
 }
@@ -60,6 +66,7 @@ function areSettingsValid(settings: BusyLightControlSettings): boolean {
 }
 
 async function fetchStatus(host: string, endpoint: string): Promise<StatusResponse | null> {
+  streamDeck.logger.debug('Fetching status from ' + host + endpoint);
   const res = await fetch(`${host}${endpoint}`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
@@ -68,6 +75,7 @@ async function fetchStatus(host: string, endpoint: string): Promise<StatusRespon
 }
 
 async function switchColor(settings: BusyLightControlSettings, color: BusyLightColor): Promise<void> {
+  streamDeck.logger.debug('Switching colour to ' + JSON.stringify(color) + ' using ' + settings.host! + settings.endpointSwitch!);
   await fetch(settings.host! + settings.endpointSwitch!, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
