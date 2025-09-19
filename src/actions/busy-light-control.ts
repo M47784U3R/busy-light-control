@@ -1,9 +1,17 @@
-import streamDeck, { action, KeyDownEvent, SingletonAction, WillAppearEvent } from "@elgato/streamdeck";
+import streamDeck, {action, KeyDownEvent, KeyUpEvent, SingletonAction, WillAppearEvent} from "@elgato/streamdeck";
 import * as PImage from 'pureimage';
 import { PassThrough } from 'stream';
+import {deflateRaw} from "zlib";
+
+let pressTimers: any = {};
+let pressStates: any = {
+  longPressed: false,
+  event: null
+};
 
 @action({ UUID: "dev.ministryofcode.busy-light-control" })
 export class BusyLightControl extends SingletonAction<BusyLightControlSettings> {
+
   override async onWillAppear(ev: WillAppearEvent<BusyLightControlSettings>): Promise<void> {
     const { settings } = ev.payload;
     
@@ -35,18 +43,76 @@ export class BusyLightControl extends SingletonAction<BusyLightControlSettings> 
 
   override async onKeyDown(ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
     const { settings } = ev.payload;
+    pressStates['keypress'] = { longPressed: false, event: ev };
+
+    pressTimers['keypress'] = setTimeout(() => {
+      pressStates['keypress'].longPressed = true;
+    }, 1000);
     streamDeck.logger.debug('Button pressed');
-    await handleButtonPress(settings, ev);
     await ev.action.setSettings(settings);
+  }
+
+  override async onKeyUp(ev: KeyUpEvent<BusyLightControlSettings>): Promise<void> {
+    const { settings } = ev.payload;
+    if (pressTimers['keypress']) {
+      clearTimeout(pressTimers['keypress']);
+      delete pressTimers['keypress'];
+    }
+
+    if (pressStates['keypress'] && !pressStates['keypress'].longPressed) {
+      await handleButtonPress(settings, pressStates['keypress'].event);
+    } else {
+      await handleLongPress(settings, pressStates['keypress'].event);
+    }
+
+    delete pressStates['keypress'];
   }
 }
 
-async function handleButtonPress(settings: BusyLightControlSettings, ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
+async function handleLongPress(settings: BusyLightControlSettings, ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
+  streamDeck.logger.debug('Long press');
   streamDeck.logger.debug('Validating settings');
   if (!areSettingsValid(settings)) return;
   try {
     const status = await fetchStatus(settings.host!, settings.endpointStatus!);
     if (!status) return;
+    // @ts-ignore
+    if (status.blue > 0 || status.red > 0 || status.green > 0) {
+      streamDeck.logger.debug('Switching busy light off');
+      const res = await fetch(`${settings.host}${settings.endpointOff}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const base64Image = await createBase64Image(new BusyLightColor(0, 0, 0));
+      await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+      await ev.action.setTitle('Off');
+    } else {
+      streamDeck.logger.debug('Switching busy light on');
+      const res = await fetch(`${settings.host}${settings.endpointOn}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok && status) {
+        const targetColor = COLORS.available;
+        await switchColor(settings, targetColor);
+        const base64Image = await createBase64Image(targetColor);
+        await ev.action.setImage(`data:image/png;base64,${base64Image}`);
+        await ev.action.setTitle('Available');
+      }
+    }
+  } catch (error) {
+    streamDeck.logger.error('Error in handleLongPress: ' + JSON.stringify(error));
+    console.error('Error in handleLongPress:', error);
+  }
+}
+
+async function handleButtonPress(settings: BusyLightControlSettings, ev: KeyDownEvent<BusyLightControlSettings>): Promise<void> {
+  streamDeck.logger.debug('Short press');
+  streamDeck.logger.debug('Validating settings');
+  if (!areSettingsValid(settings)) return;
+  try {
+    const status = await fetchStatus(settings.host!, settings.endpointStatus!);
+    if (!status || status.status === 'off') return;
 
     const isBusy = status.red === 255;
     const targetColor = isBusy ? COLORS.available : COLORS.busy;
